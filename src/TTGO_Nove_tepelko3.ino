@@ -253,12 +253,12 @@ void regulaceTeploty() {
   // Normální regulace teploty
   if (Teplota_Doma >= Pozadovana_Teplota_Doma) {
     // Vypneme zařízení a nastavíme příznak vypnuto
-    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
     Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
     zapnuto_Vypnuto = 0;
   } else if (zapnuto_Vypnuto == 0 && Teplota_Doma > (Pozadovana_Teplota_Doma - 1.4)) {
     // Zařízení je vypnuto a rozdíl teplot je menší než 1.4°C, stále odesíláme příkaz pro vypnutí
-    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
     Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
     Serial.println("Zařízení vypnuto, čekáme na pokles teploty o více než 1.4°C");
   } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.4)) {
@@ -364,6 +364,10 @@ void inicializaceZapnuti() {
   Serial.println("");
   Serial.println("Start funkce inicializaceZapnuti___________ ");
   Serial.println("");
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
+  Serial.println("________________________________");
+  Serial.println("Odesláno z funkce inicializaceZapnuti rawData_Sinclair_Zapnuto22");
+  delay(5000);
 
   for (int i = 0; i < 35; i++) {
     irsend.sendRaw(rawData_Sinclair_1500W, 35, 38);
