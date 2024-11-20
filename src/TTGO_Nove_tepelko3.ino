@@ -37,7 +37,7 @@ uint16_t rawData_Sinclair_Zapnuto22[279] = { 9022, 4474, 640, 582, 624, 572, 634
 uint16_t rawData_Sinclair_Vypnuto[279] = { 8996, 4504, 630, 570, 636, 568, 636, 1648, 656, 572, 634, 1670, 636, 572, 634, 570, 634, 578, 628, 1672, 632, 1678, 628, 1670, 636, 570, 638, 568, 634, 576, 628, 572, 634, 570, 636, 656, 546, 570, 636, 570, 636, 654, 550, 572, 632, 1678, 630, 570, 636, 566, 638, 574, 630, 568, 638, 566, 636, 570, 634, 1676, 630, 570, 636, 1670, 636, 570, 638, 566, 638, 1670, 632, 572, 634, 19992, 636, 570, 634, 568, 636, 568, 638, 568, 638, 568, 634, 568, 636, 570, 636, 570, 634, 568, 638, 570, 634, 570, 636, 572, 634, 578, 628, 570, 636, 1724, 580, 1672, 632, 578, 626, 570, 636, 568, 638, 574, 628, 572, 634, 566, 640, 568, 638, 566, 636, 568, 636, 570, 636, 568, 636, 572, 634, 1674, 630, 570, 634, 568, 638, 568, 636, 39996, 8972, 4500, 638, 572, 632, 572, 634, 570, 636, 570, 634, 570, 634, 626, 580, 570, 634, 576, 628, 574, 634, 548, 656, 568, 636, 572, 634, 576, 628, 570, 634, 570, 636, 570, 636, 570, 632, 574, 630, 574, 632, 568, 638, 568, 636, 566, 638, 572, 658, 570, 638, 568, 636, 578, 628, 570, 636, 564, 642, 566, 638, 1672, 634, 570, 634, 1672, 634, 568, 634, 1682, 626, 568, 636, 20000, 628, 574, 630, 570, 636, 568, 636, 572, 634, 570, 634, 570, 636, 572, 632, 568, 636, 582, 624, 570, 634, 568, 636, 568, 636, 570, 636, 578, 628, 568, 638, 568, 634, 570, 634, 576, 630, 570, 636, 570, 634, 568, 638, 570, 636, 658, 546, 570, 636, 572, 634, 572, 632, 570, 636, 566, 638, 570, 636, 1670, 636, 566, 638, 1670, 636 };        // UNKNOWN 1171ABD0
 
 THERMISTOR thermistor(Pin_Voda_Vstup,  // Analog pin
-                      11400,           // Nominal resistance at 25 ºC
+                      11500,           // Nominal resistance at 25 ºC
                       3950,            // Thermistor's beta coefficient
                       10000);          // Funkce načte teploty na daných pinech
                                        // Funkce načte teploty na daných pinech
@@ -73,6 +73,7 @@ float Pozadovana_Teplota_Doma = 0.0;  // Požadovaná teplota doma ve stupních 
 
 int Prikon_Zasuvka = 0;   
 float Pomer_Vykonu = 0.0;
+int odesilany_vykon_IR = 0;
 int Vykon_W = 0;
 float Voda_Vstup = 0;
 float Voda_Vystup = 0;
@@ -157,35 +158,42 @@ void cteniDatSenzoru() {
   delay(100);
 
 
-  // Měření průtoku s kontrolními měřeními
-int pokusy = 0;
-do {
-  unsigned long startTime = millis();
-  int flowCount = 0;
-  while (millis() - startTime < 1000) { // měření po dobu 1 sekundy
-    if (digitalRead(Pin_Prutokomer) == HIGH) {
-      flowCount++;
-      while (digitalRead(Pin_Prutokomer) == HIGH);
-    }
+  // Kontrola, zda je zařízení zapnuto
+  if (digitalRead(Pin_Privod_elektriny) == HIGH) {
+    // Měření průtoku s kontrolními měřeními
+    int pokusy = 0;
+    do {
+      unsigned long startTime = millis();
+      int flowCount = 0;
+      while (millis() - startTime < 1000) { // měření po dobu 1 sekundy
+        if (digitalRead(Pin_Prutokomer) == HIGH) {
+          flowCount++;
+          while (digitalRead(Pin_Prutokomer) == HIGH);
+        }
+      }
+      Prutok_Litru_Minuta = flowCount / 8.0;
+      pokusy++;
+    } while (Prutok_Litru_Minuta < 5 && pokusy < 3);
+
+    Serial.print("Průtok v litrech za minutu: ");
+    Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
+  } else {
+    // Pokud je zařízení vypnuto, průtok neměříme a nastavíme na nulu
+    Prutok_Litru_Minuta = 0;
+    Serial.println("Zařízení vypnuto, průtok neměřen.");
   }
-  Prutok_Litru_Minuta = flowCount / 8.0;
-  pokusy++;
-} while (Prutok_Litru_Minuta < 5 && pokusy < 3);
-
-Serial.print("Průtok v litrech za minutu: ");
-Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
-
 
   Vykon_W = (((Voda_Vystup - Voda_Vstup) * Prutok_Litru_Minuta) / 13.2) * 1000;
   Serial.println("Vykon: " + String(Vykon_W));
 
   // ===== Aktualizace displeje =====
-tft.fillScreen(TFT_RED);
-tft.drawString("VYSTUP " + String(Voda_Vystup) + "C ", tft.width() / 2, tft.height() / 2);
-tft.drawString("DOMA " + String(Teplota_Doma) + "C ", tft.width() / 2, tft.height() / 4);
-tft.drawString(String(Vykon_W) + " W  " + String(Prutok_Litru_Minuta, 1), tft.width() / 2, 100);
+  tft.fillScreen(TFT_RED);
+  tft.drawString("VYSTUP " + String(Voda_Vystup) + "C ", tft.width() / 2, tft.height() / 2);
+  tft.drawString("DOMA " + String(Teplota_Doma) + "C ", tft.width() / 2, tft.height() / 4);
+  tft.drawString(String(Vykon_W) + " W  " + String(Prutok_Litru_Minuta, 1), tft.width() / 2, 100);
 
 }
+
 
 //==============================================================================================
 
@@ -255,11 +263,12 @@ void regulaceTeploty() {
     // Vypneme zařízení a nastavíme příznak vypnuto
     if (zapnuto_Vypnuto == 1) {
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    odesilany_vykon_IR = 0;
+    Serial.println("Odesláno z funkce regulaceTeploty 3x rawData_Sinclair_0W a čekám 100s");
     delay(10000);
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
     delay(10000);
-    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
-    Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W a čekám 100s");
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);   
     delay(100000);
     digitalWrite(Pin_Privod_elektriny, LOW);
     Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW");
@@ -267,6 +276,7 @@ void regulaceTeploty() {
   } else if (zapnuto_Vypnuto == 0 && Teplota_Doma > (Pozadovana_Teplota_Doma - 1.4)) {
     // Zařízení je vypnuto a rozdíl teplot je menší než 1.4°C, stále odesíláme příkaz pro vypnutí
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    odesilany_vykon_IR = 0;
     Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
     Serial.println("Zařízení vypnuto, čekáme na pokles teploty o více než 1.4°C");
   } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.4)) {
@@ -277,24 +287,26 @@ void regulaceTeploty() {
 
     if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
       irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
+      odesilany_vykon_IR = 400;
       Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_400W");
     } else {
       irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
+      odesilany_vykon_IR = 800;
       Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_800W");
     }
   } else if (zapnuto_Vypnuto == 1) {
     // Pokud je zařízení zapnuté, upravujeme výkon podle rozdílu teplot
     if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
       irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
+      odesilany_vykon_IR = 400;
       Serial.println("Přepínám na 400W");
     } else {
       irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
+      odesilany_vykon_IR = 800;
       Serial.println("Přepínám na 800W");
     }
   }
 }
-
-
 
 
 //============================================================================================
@@ -303,12 +315,12 @@ void regulaceTeploty() {
 void sendToThingSpeak() {
   // Nastavení hodnot do jednotlivých polí (fields)
   ThingSpeak.setField(1, Vykon_W);                    // Field 1: Vykon_W
-  ThingSpeak.setField(2, Prutok_Litru_Minuta);       // Field 2: Prutok_Litru_Minuta
+  ThingSpeak.setField(2, Prutok_Litru_Minuta);        // Field 2: Prutok_Litru_Minuta
   ThingSpeak.setField(3, Voda_Vstup);                 // Field 3: Voda_Vstup
   ThingSpeak.setField(4, Voda_Vystup);                // Field 4: Voda_Vystup
   ThingSpeak.setField(5, Teplota_Doma);               // Field 5: Teplota_Doma
   ThingSpeak.setField(6, Pozadovana_Teplota_Doma);    // Field 6: Pozadovana_Teplota_Doma
-  ThingSpeak.setField(7, Prikon_Zasuvka);             // Field 7: Prikon_Zasuvka
+  ThingSpeak.setField(7, odesilany_vykon_IR);         // Field 7: Prikon_Zasuvka
   if (Pomer_Vykonu != 0) {                            // Pokud je Pomer_Vykonu nenulový
     ThingSpeak.setField(8, Pomer_Vykonu);             // Field 8: Pomer_Vykonu
   }
@@ -353,6 +365,7 @@ void kontrolaBezpecnosti() {
     }
     delay(1000);
     irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
+    odesilany_vykon_IR = 0;
     delay(2000); 
     irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
     Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto a čekám 120s");
@@ -378,6 +391,7 @@ void inicializaceZapnuti() {
     Serial.println("Odesláno z funkce inicializaceZapnuti Pin_Privod_elektriny, HIGH");
     for (int i = 0; i < 35; i++) {
         irsend.sendRaw(rawData_Sinclair_1500W, 35, 38);
+        odesilany_vykon_IR = 1500;
         Serial.println("________________________________");
         Serial.println("Odesláno z funkce inicializaceZapnuti rawData_Sinclair_1500W");
         Serial.println(i);
@@ -394,6 +408,7 @@ void inicializaceZapnuti() {
         tft.drawString("Vykon<1300", tft.width() / 2, 100);
         delay(1000);  
         irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
+        odesilany_vykon_IR = 0;
         delay(1000); 
         irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
         Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto");
@@ -448,6 +463,13 @@ void setup(void) {
   
   WiFi.mode(WIFI_STA);   
   ThingSpeak.begin(client);  // Initialize ThingSpeak
+  delay(1000);  
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
+  Serial.println("Odesláno z funkce setup rawData_Sinclair_Zapnuto22");
 
   delay(1000); 
 
