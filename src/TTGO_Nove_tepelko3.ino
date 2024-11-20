@@ -253,12 +253,20 @@ void regulaceTeploty() {
   // Normální regulace teploty
   if (Teplota_Doma >= Pozadovana_Teplota_Doma) {
     // Vypneme zařízení a nastavíme příznak vypnuto
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
-    Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
-    zapnuto_Vypnuto = 0;
+    if (zapnuto_Vypnuto == 1) {
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    delay(10000);
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    delay(10000);
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W a čekám 100s");
+    delay(100000);
+    digitalWrite(Pin_Privod_elektriny, LOW);
+    Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW");
+    zapnuto_Vypnuto = 0; }
   } else if (zapnuto_Vypnuto == 0 && Teplota_Doma > (Pozadovana_Teplota_Doma - 1.4)) {
     // Zařízení je vypnuto a rozdíl teplot je menší než 1.4°C, stále odesíláme příkaz pro vypnutí
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
     Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
     Serial.println("Zařízení vypnuto, čekáme na pokles teploty o více než 1.4°C");
   } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.4)) {
@@ -345,14 +353,13 @@ void kontrolaBezpecnosti() {
     }
     delay(1000);
     irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
-    delay(1000); 
+    delay(2000); 
     irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
-    delay(1000); 
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
-    Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto");
+    Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto a čekám 120s");
     zapnuto_Vypnuto = 0;
     delay(120000);
     digitalWrite(Pin_Privod_elektriny, LOW);
+    Serial.println("Odesláno z funkce kontrolaBezpecnosti Pin_Privod_elektriny, LOW");
   }
 }
 
@@ -360,44 +367,49 @@ void kontrolaBezpecnosti() {
 
 
 void inicializaceZapnuti() {
+    static int pokus = 0; // Přidáno pro sledování počtu pokusů
 
-  Serial.println("");
-  Serial.println("Start funkce inicializaceZapnuti___________ ");
-  Serial.println("");
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
-  Serial.println("________________________________");
-  Serial.println("Odesláno z funkce inicializaceZapnuti rawData_Sinclair_Zapnuto22");
-  delay(5000);
-
-  for (int i = 0; i < 35; i++) {
-    irsend.sendRaw(rawData_Sinclair_1500W, 35, 38);
+    Serial.println("");
+    Serial.println("Start funkce inicializaceZapnuti___________ ");
+    Serial.println("");
+    digitalWrite(Pin_Privod_elektriny, HIGH);
+    delay(5000);
     Serial.println("________________________________");
-    Serial.println("Odesláno z funkce inicializaceZapnuti rawData_Sinclair_1500W");
-    Serial.println(i);
-    cteniDatSenzoru();
-    kontrolaBezpecnosti();
-    sendToThingSpeak();
-    delay(15000);
-  }
-
-zapnuto_Vypnuto = 1;
-
-if (Vykon_W < 1300) {
-    Serial.println("Výkon po inicializaci je menší než 1300W, vypínám zařízení z funkce inicializaceZapnuti");
-    tft.drawString("Vykon<1300", tft.width() / 2, 100);
-    delay(1000);  
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
-    delay(1000); 
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
-    delay(1000); 
-    irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
-    Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto");
-    zapnuto_Vypnuto = 0;
-    delay(120000);
-    digitalWrite(Pin_Privod_elektriny, LOW);
+    Serial.println("Odesláno z funkce inicializaceZapnuti Pin_Privod_elektriny, HIGH");
+    for (int i = 0; i < 35; i++) {
+        irsend.sendRaw(rawData_Sinclair_1500W, 35, 38);
+        Serial.println("________________________________");
+        Serial.println("Odesláno z funkce inicializaceZapnuti rawData_Sinclair_1500W");
+        Serial.println(i);
+        cteniDatSenzoru();
+        kontrolaBezpecnosti();
+        sendToThingSpeak();
+        delay(15000);
     }
-  
+    zapnuto_Vypnuto = 1;
+
+    // Kontrola výkonu a zda počet pokusů o znovu inicializaci není větší než 3
+    if (Vykon_W < 1300) {
+        Serial.println("Výkon po inicializaci je menší než 1300W, vypínám zařízení z funkce inicializaceZapnuti");
+        tft.drawString("Vykon<1300", tft.width() / 2, 100);
+        delay(1000);  
+        irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
+        delay(1000); 
+        irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
+        Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto");
+        zapnuto_Vypnuto = 0;
+        delay(120000);
+        digitalWrite(Pin_Privod_elektriny, LOW);
+        delay(120000);       
+        pokus++; 
+        if (pokus < 3) {                // Kontrola, zda počet pokusů není větší než 3
+            inicializaceZapnuti();
+        } else {
+            Serial.println("Maximální počet 3 pokusů dosažen. Funkce inicializaceZapnuti se ukončuje.");
+        }
+    }
 }
+
 
 
 //===================================================================================================
@@ -410,14 +422,14 @@ void setup(void) {
   Serial.println("START funkce Setup ");
   Serial.println("");
 
-digitalWrite(Pin_Privod_elektriny, HIGH);  // Spustí proud do vodního i tepelného čerpadla
-
+  digitalWrite(Pin_Privod_elektriny, HIGH);  // Spustí proud do vodního i tepelného čerpadla
   irsend.begin();
+
 #if ESP8266
-  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);  // Nutné pro IR odesílání RAW dat
-#else                                                // ESP8266
-  Serial.begin(115200, SERIAL_8N1);
-#endif                                               // ESP8266
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);   // Nutné pro IR odesílání RAW dat
+#else                                                 // ESP8266
+  Serial.begin(115200, SERIAL_8N1);                   // Ostatní desky
+#endif                                               
   delay(100);
 
   pinMode(Pin_Privod_elektriny, OUTPUT);
@@ -437,19 +449,7 @@ digitalWrite(Pin_Privod_elektriny, HIGH);  // Spustí proud do vodního i tepeln
   WiFi.mode(WIFI_STA);   
   ThingSpeak.begin(client);  // Initialize ThingSpeak
 
-  delay(5000); 
-  cteniDatSenzoru(); 
-  kontrolaBezpecnosti();
-  sendToThingSpeak();
-
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
-  delay(2000);
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
-  delay(2000);
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
-  Serial.println("Odesláno z funkce setup rawData_Sinclair_Zapnuto22"); 
-  
-  delay(1000);
+  delay(1000); 
 
   Serial.println("");
   Serial.print("KONEC funkce Setup ");
