@@ -130,7 +130,7 @@ void cteniDatSenzoru() {
   Serial.println("Start funkce cteniDatSenzoru___________ ");
   Serial.println("");
 
-  static int cyklus = 0;
+  static int cyklus = 0;    // sleduje počet opakování programu od spuštění
   cyklus++;
 
   // ===== Průměrování Voda_Vstup 3x =====
@@ -157,31 +157,23 @@ void cteniDatSenzoru() {
   Serial.println("Teplota doma: " + String(Teplota_Doma));
   delay(100);
 
-
-  // Kontrola, zda je zařízení zapnuto
-  if (digitalRead(Pin_Privod_elektriny) == HIGH) {
-    // Měření průtoku s kontrolními měřeními
-    int pokusy = 0;
-    do {
-      unsigned long startTime = millis();
-      int flowCount = 0;
-      while (millis() - startTime < 1000) { // měření po dobu 1 sekundy
-        if (digitalRead(Pin_Prutokomer) == HIGH) {
-          flowCount++;
-          while (digitalRead(Pin_Prutokomer) == HIGH);
-        }
+  // Měření průtoku s kontrolními měřeními
+  int pokusy = 0;
+  do {
+    unsigned long startTime = millis();
+    int flowCount = 0;
+    while (millis() - startTime < 1000) {       // měření po dobu 1 sekundy
+      if (digitalRead(Pin_Prutokomer) == HIGH) {
+        flowCount++;
+        while (digitalRead(Pin_Prutokomer) == HIGH);
       }
-      Prutok_Litru_Minuta = flowCount / 8.0;
-      pokusy++;
-    } while (Prutok_Litru_Minuta < 5 && pokusy < 3);
+    }
+    Prutok_Litru_Minuta = flowCount / 8.0;
+    pokusy++;
+  } while (Prutok_Litru_Minuta < 5 && pokusy < 3);
 
-    Serial.print("Průtok v litrech za minutu: ");
-    Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
-  } else {
-    // Pokud je zařízení vypnuto, průtok neměříme a nastavíme na nulu
-    Prutok_Litru_Minuta = 0;
-    Serial.println("Zařízení vypnuto, průtok neměřen.");
-  }
+  Serial.print("Průtok v litrech za minutu: ");
+  Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
 
   Vykon_W = (((Voda_Vystup - Voda_Vstup) * Prutok_Litru_Minuta) / 13.2) * 1000;
   Serial.println("Vykon: " + String(Vykon_W));
@@ -193,6 +185,7 @@ void cteniDatSenzoru() {
   tft.drawString(String(Vykon_W) + " W  " + String(Prutok_Litru_Minuta, 1), tft.width() / 2, 100);
 
 }
+
 
 
 //==============================================================================================
@@ -219,10 +212,10 @@ void regulaceTeploty() {
     // Nastavení požadované teploty doma na základě aktuálního času
     if (hour >= 19 && hour <= 22) {
       // Od 19:00 do 22:00 snižujeme teplotu o 0.15°C každou hodinu
-      float adjustment = -0.15 * (hour - 18);  // Celkem snížení až o 0.6°C
+      float adjustment = -0.2 * (hour - 18);  // Celkem snížení až o 0.8°C
       Pozadovana_Teplota_Doma += adjustment;
     } else if (hour >= 23 || hour < 8) {
-      // Od 23:00 do 8:00 udržujeme teplotu sníženou o 0.6°C
+      // Od 23:00 do 8:00 udržujeme teplotu sníženou o 0.8°C
       Pozadovana_Teplota_Doma -= 0.6;
     } else if (hour >= 9 && hour <= 12) {
       // Od 9:00 do 12:00 zvyšujeme teplotu o 0.2°C každou hodinu
@@ -265,19 +258,25 @@ void regulaceTeploty() {
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
     odesilany_vykon_IR = 0;
     Serial.println("Odesláno z funkce regulaceTeploty 3x rawData_Sinclair_0W a čekám 100s");
-    delay(10000);
+    sendToThingSpeak();
+    delay(1000);
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
     delay(10000);
+    irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+    delay(20000);
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);   
-    delay(100000);
+    delay(90000);
     digitalWrite(Pin_Privod_elektriny, LOW);
-    Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW");
-    zapnuto_Vypnuto = 0; }
+    zapnuto_Vypnuto = 0;
+    Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW a nastaveno zapnuto_Vypnuto = 0");
+     }
   } else if (zapnuto_Vypnuto == 0 && Teplota_Doma > (Pozadovana_Teplota_Doma - 1.4)) {
     // Zařízení je vypnuto a rozdíl teplot je menší než 1.4°C, stále odesíláme příkaz pro vypnutí
     irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
     odesilany_vykon_IR = 0;
-    Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W");
+    delay(2000);
+    digitalWrite(Pin_Privod_elektriny, LOW);
+    Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_0W a nastaven Pin_Privod_elektriny = LOW");
     Serial.println("Zařízení vypnuto, čekáme na pokles teploty o více než 1.4°C");
   } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.4)) {
     // Teplota klesla o více než 1.4°C pod požadovanou hodnotu
@@ -347,7 +346,7 @@ void kontrolaBezpecnosti() {
   Serial.println("Start funkce kontrolaBezpecnosti___________ ");
   Serial.println("");
 
-  if (Voda_Vystup >= 52 ||  Voda_Vstup <= 10 || Prutok_Litru_Minuta < 5) {
+  if (Voda_Vystup >= 52 || Voda_Vstup <= 10 || (digitalRead(Pin_Privod_elektriny) == HIGH && Prutok_Litru_Minuta < 5)) {
     tft.fillScreen(TFT_BLACK);
     if (Voda_Vystup >= 52) {
       Serial.println("Voda_Vystup >= 52");
@@ -357,7 +356,7 @@ void kontrolaBezpecnosti() {
       Serial.println("Voda_Vstup <= 10 C");
       tft.drawString("Voda<10 C", tft.width() / 2, 100);
     }
-    if (Prutok_Litru_Minuta < 5) {
+    if (digitalRead(Pin_Privod_elektriny) == HIGH && Prutok_Litru_Minuta < 5) {
       Serial.println("Prutok < 5");
       Serial.print("Průtok v litrech za minutu: ");
       Serial.println(Prutok_Litru_Minuta, 1); 
@@ -376,6 +375,7 @@ void kontrolaBezpecnosti() {
   }
 }
 
+
 //===============================================================================
 
 
@@ -389,7 +389,7 @@ void inicializaceZapnuti() {
     delay(5000);
     Serial.println("________________________________");
     Serial.println("Odesláno z funkce inicializaceZapnuti Pin_Privod_elektriny, HIGH");
-    for (int i = 0; i < 35; i++) {
+    for (int i = 0; i < 40; i++) {
         irsend.sendRaw(rawData_Sinclair_1500W, 35, 38);
         odesilany_vykon_IR = 1500;
         Serial.println("________________________________");
@@ -433,23 +433,29 @@ void inicializaceZapnuti() {
 
 void setup(void) {
 
-  Serial.println("");
-  Serial.println("START funkce Setup ");
-  Serial.println("");
+  Serial.println(""); Serial.println("START funkce Setup "); Serial.println("");
+ 
+  pinMode(Pin_Privod_elektriny, OUTPUT);
+  pinMode(Pin_Prutokomer, INPUT);
+  pinMode(Pin_TFT_Led, OUTPUT);
 
   digitalWrite(Pin_Privod_elektriny, HIGH);  // Spustí proud do vodního i tepelného čerpadla
+
   irsend.begin();
+  delay(3000);
+  irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38); 
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
 
 #if ESP8266
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);   // Nutné pro IR odesílání RAW dat
 #else                                                 // ESP8266
   Serial.begin(115200, SERIAL_8N1);                   // Ostatní desky
-#endif                                               
-  delay(100);
+#endif
 
-  pinMode(Pin_Privod_elektriny, OUTPUT);
-  pinMode(Pin_Prutokomer, INPUT);
-  pinMode(Pin_TFT_Led, OUTPUT);
+  delay(100);
 
   tft.init();
   tft.setRotation(1);  // Orientace na šířku
@@ -458,19 +464,23 @@ void setup(void) {
   digitalWrite(Pin_TFT_Led, HIGH);  // Zapnutí podsvícení displeje
   tft.setTextColor(TFT_WHITE);      // Barva písma
   tft.fillScreen(TFT_RED);          // Barva pozadí
-
-  pripojeniWifi();
+ 
+  WiFi.mode(WIFI_STA);   // WIFI_AP_STA: Kombinace režimů STA a AP, což umožňuje zařízení být současně klientem jiné sítě a zároveň vytvářet vlastní síť
   
-  WiFi.mode(WIFI_STA);   
-  ThingSpeak.begin(client);  // Initialize ThingSpeak
-  delay(1000);  
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
-  delay(2000); 
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
-  delay(2000); 
-  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38);
-  Serial.println("Odesláno z funkce setup rawData_Sinclair_Zapnuto22");
+  pripojeniWifi();
 
+  ThingSpeak.begin(client);  // Initialize ThingSpeak
+  delay(2000);  
+
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_Zapnuto22, 279, 38); 
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+  delay(2000); 
+  irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+
+  Serial.println("Odesláno z funkce setup rawData_Sinclair_Zapnuto22 a rawData_Sinclair_0W");
   delay(1000); 
 
   Serial.println("");
