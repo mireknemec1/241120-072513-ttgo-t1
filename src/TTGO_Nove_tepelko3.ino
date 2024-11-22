@@ -72,13 +72,14 @@ const float zakladni_teplota = 22.0; // Základní požadovaná teplota
 float Pozadovana_Teplota_Doma = 0.0;  // Požadovaná teplota doma ve stupních C po desetinách stupně¨
 
 int Prikon_Zasuvka = 0;   
-float Pomer_Vykonu = 0.0;
 int odesilany_vykon_IR = 0;
 int Vykon_W = 0;
+float Pomer_Vykonu = 0.0;
 float Voda_Vstup = 0;
 float Voda_Vystup = 0;
 float Teplota_Doma = 0;
 float rozdil_400W_800W = 2.0;
+float rozdil_Vypnuto_Zapnuto = 1.2;
 
 //============================================================================================================
 
@@ -156,23 +157,30 @@ void cteniDatSenzoru() {
   Serial.println("Teplota doma: " + String(Teplota_Doma));
   delay(100);
 
-  // Měření průtoku s kontrolními měřeními
-  int pokusy = 0;
-  do {
-    unsigned long startTime = millis();
-    int flowCount = 0;
-    while (millis() - startTime < 1000) {       // měření po dobu 1 sekundy
-      if (digitalRead(Pin_Prutokomer) == HIGH) {
-        flowCount++;
-        while (digitalRead(Pin_Prutokomer) == HIGH);
+  // Kontrola stavu pinu před měřením průtoku
+  if (digitalRead(Pin_Privod_elektriny) == HIGH) {
+    // Měření průtoku s kontrolními měřeními
+    int pokusy = 0;
+    Serial.println("Startuji měření průtoku: ");
+    do {
+      unsigned long startTime = millis();
+      int flowCount = 0;
+      while (millis() - startTime < 1000) {       // měření po dobu 1 sekundy
+        if (digitalRead(Pin_Prutokomer) == HIGH) {
+          flowCount++;
+          while (digitalRead(Pin_Prutokomer) == HIGH); // Čeká na LOW, aby nedošlo k opakovanému počítání
+        }
       }
-    }
-    Prutok_Litru_Minuta = flowCount / 8.0;
-    pokusy++;
-  } while (Prutok_Litru_Minuta < 5 && pokusy < 3);
+      Prutok_Litru_Minuta = flowCount / 8.0;
+      pokusy++;
+    } while (Prutok_Litru_Minuta < 5 && pokusy < 3);
 
-  Serial.print("Průtok v litrech za minutu: ");
-  Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
+    Serial.print("Průtok v litrech za minutu: ");
+    Serial.println(Prutok_Litru_Minuta, 1); // Výpis s jednou desetinnou čárkou
+  } else {
+    Prutok_Litru_Minuta = 0;
+    Serial.println("Prutokomer je LOW, měření průtoku přeskočeno.");
+  }
 
   Vykon_W = (((Voda_Vystup - Voda_Vstup) * Prutok_Litru_Minuta) / 13.2) * 1000;
   Serial.println("Vykon: " + String(Vykon_W));
@@ -191,56 +199,43 @@ void cteniDatSenzoru() {
 
 
 void regulaceTeploty() {
-      
-      Serial.println("");
-      Serial.println("Start funkce regulaceTeploty___________ ");
-      Serial.println("");
-    
-      // Resetování Pozadovana_Teplota_Doma na základní hodnotu před úpravami
-      Pozadovana_Teplota_Doma = zakladni_teplota;
-    
-      // Deklarace statických proměnných na úrovni funkce
-      static float rozdil_pocatecni = 0.0;
-      static bool rozdil_pocatecni_nastaven = false;
-    
-      // Získání aktuálního času z NTP serveru
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo)) {  // Pokud je získání času úspěšné
-        int hour = timeinfo.tm_hour;  // Extrahování aktuální hodiny
-    
-        // Nastavení požadované teploty doma na základě aktuálního času
-        if (hour >= 19 && hour <= 23) {
-          // Od 19:00 do 23:00 snižujeme teplotu o 0,2°C každou hodinu
-          float adjustment = -0.2 * (hour - 18);  // Celkem snížení až o 1,0°C
-          Pozadovana_Teplota_Doma += adjustment;
-        } else if (hour >= 24 || hour < 8) {
-          // Od 24:00 do 8:00 udržujeme teplotu sníženou o 1,0°C
-          Pozadovana_Teplota_Doma -= 0.8;
-        } else if (hour >= 9 && hour <= 12) {
-          // Od 9:00 do 12:00 zvyšujeme teplotu o 0,15°C každou hodinu
-          float adjustment = 0.15 * (hour - 8);  // Zvyšujeme o 0,15°C každou hodinu
-          Pozadovana_Teplota_Doma += adjustment;
-        }
-        // V ostatních hodinách zůstává požadovaná teplota základní
-    
-        // Úprava regulace mezi 13:00 a 18:00 udržujeme rozdíl tak, aby nedocházelo k regulaci za jakékoliv teploty
-        if (hour >= 13 && hour < 18) {
-          if (!rozdil_pocatecni_nastaven) {
-            rozdil_pocatecni = Pozadovana_Teplota_Doma - Teplota_Doma;
-            rozdil_pocatecni_nastaven = true;
-            Serial.println("");
-            Serial.print("Uložený počáteční rozdíl v čase 13-18.00 hod: ");
-            Serial.println(rozdil_pocatecni);
-            Serial.println("");
-          }
-              // Nastavení požadované teploty tak, aby rozdíl zůstal konstantní
-          Pozadovana_Teplota_Doma = Teplota_Doma + rozdil_pocatecni;
-        } else {
-          // Mimo časový úsek 13:00 - 18:00 resetujeme příznak
-          rozdil_pocatecni_nastaven = false;
-        }
-      }
-    
+
+  Serial.println("");
+  Serial.println("Start funkce regulaceTeploty___________ ");
+  Serial.println("");
+
+  // Resetování Pozadovana_Teplota_Doma na základní hodnotu před úpravami
+  Pozadovana_Teplota_Doma = zakladni_teplota;
+
+  // Deklarace statických proměnných na úrovni funkce
+  static float rozdil_pocatecni = 0.0;
+  static bool rozdil_pocatecni_nastaven = false;
+  static bool first_run = true;  // Přidaná statická proměnná pro detekci prvního spuštění
+
+  // Získání aktuálního času z NTP serveru
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {  // Pokud je získání času úspěšné
+    int hour = timeinfo.tm_hour;  // Extrahování aktuální hodiny
+
+    // Nastavení požadované teploty doma na základě aktuálního času
+    if (hour >= 19 && hour <= 23) {
+      // Od 19:00 do 23:00 snižujeme teplotu o 0,2°C každou hodinu
+      float adjustment = -0.2 * (hour - 18);  // Celkem snížení až o 1,0°C
+      Pozadovana_Teplota_Doma += adjustment;
+    } else if (hour >= 0 && hour < 8) {
+      // Od 0:00 do 8:00 udržujeme teplotu sníženou o 1,0°C
+      Pozadovana_Teplota_Doma -= 1.0;
+    } else if (hour >= 9 && hour <= 12) {
+      // Od 9:00 do 12:00 zvyšujeme teplotu o 0,15°C každou hodinu
+      float adjustment = 0.15 * (hour - 8);  // Zvyšujeme o 0,15°C každou hodinu
+      Pozadovana_Teplota_Doma += adjustment;
+    }
+    // V ostatních hodinách zůstává požadovaná teplota základní
+
+    // === Přidáno: Prvotní vyhodnocení při prvním spuštění ===
+    if (first_run) {
+      Serial.println("První spuštění regulaceTeploty");
+
       Serial.println("________________________________");
       Serial.print("Teplota_Doma: ");
       Serial.println(Teplota_Doma);
@@ -248,50 +243,112 @@ void regulaceTeploty() {
       Serial.println(Pozadovana_Teplota_Doma);
       Serial.print("rozdil_400W_800W: ");
       Serial.println(rozdil_400W_800W);
-    
-      // Normální regulace teploty
+
+      // Normální regulace teploty při prvním spuštění 
       if (Teplota_Doma >= Pozadovana_Teplota_Doma) {
         // Vypneme zařízení a nastavíme příznak vypnuto
         if (digitalRead(Pin_Privod_elektriny) == HIGH) {
-        irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
-        odesilany_vykon_IR = 0;
-        Serial.println("Odesláno z funkce regulaceTeploty z důvodu teplota_doma >= Pozadovana_Teplota_Doma Sinclair_0W a čekám 100s");
-        delay(2000);
-        irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
-        delay(20000);
-        irsend.sendRaw(rawData_Sinclair_0W, 35, 38);   
-        delay(90000);
-        digitalWrite(Pin_Privod_elektriny, LOW);
-        Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW");
-         }
-      } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.0)) {
-        // Teplota klesla o více než 1,0°C pod požadovanou hodnotu
+          irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+          odesilany_vykon_IR = 0;
+          Serial.println("Odesláno z funkce regulaceTeploty (první spuštění) - vypnutí zařízení");
+          delay(2000);
+          irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+          delay(20000);
+          irsend.sendRaw(rawData_Sinclair_0W, 35, 38);   
+          delay(90000);
+          digitalWrite(Pin_Privod_elektriny, LOW);
+          Serial.println("Odesláno z funkce regulaceTeploty první spuštění Pin_Privod_elektriny, LOW");
+        }
+      } else if (Teplota_Doma <= Pozadovana_Teplota_Doma) { 
+        // Teplota je pod požadovanou hodnotou (rozdil_Vypnuto_Zapnuto = 0)
         if (digitalRead(Pin_Privod_elektriny) == LOW) {
-          Serial.println("Funkce regulaceTeploty Teplota_Doma <= (Pozadovana_Teplota_Doma - 1.0 a následné Pin_Privod_elektriny = LOW, voláme inicializaciZapnuti");
+          Serial.println("Funkce regulaceTeploty (první spuštění): Teplota_Doma <= Pozadovana_Teplota_Doma, voláme inicializaceZapnuti");
           inicializaceZapnuti();
         }    
         if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
           irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
           odesilany_vykon_IR = 400;
-          Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_400W");
+          Serial.println("Odesláno z funkce regulaceTeploty (první spuštění) rawData_Sinclair_400W");
         } else {
           irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
           odesilany_vykon_IR = 800;
-          Serial.println("Odesláno z funkce regulaceTeploty rawData_Sinclair_800W");
-        }
-      } else if (digitalRead(Pin_Privod_elektriny) == HIGH) {
-        // Pokud je zařízení zapnuté, upravujeme výkon podle rozdílu teplot
-        if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
-          irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
-          odesilany_vykon_IR = 400;
-          Serial.println("Přepínám na 400W");
-        } else {
-          irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
-          odesilany_vykon_IR = 800;
-          Serial.println("Přepínám na 800W");
+          Serial.println("Odesláno z funkce regulaceTeploty (první spuštění) rawData_Sinclair_800W");
         }
       }
+      // Nastavíme first_run na false po prvotním vyhodnocení
+      first_run = false;
     }
+
+    // Úprava regulace mezi 13:00 a 18:00
+    if (hour >= 13 && hour < 18) {
+      if (!rozdil_pocatecni_nastaven) {
+        rozdil_pocatecni = Pozadovana_Teplota_Doma - Teplota_Doma;
+        rozdil_pocatecni_nastaven = true;
+        Serial.println("");
+        Serial.print("Uložený počáteční rozdíl v čase 13-18.00 hod: ");
+        Serial.println(rozdil_pocatecni);
+        Serial.println("");
+      }
+      // Nastavení požadované teploty tak, aby rozdíl zůstal konstantní
+      Pozadovana_Teplota_Doma = Teplota_Doma + rozdil_pocatecni;
+    } else {
+      // Mimo časový úsek 13:00 - 18:00 resetujeme příznak
+      rozdil_pocatecni_nastaven = false;
+    }
+  }
+
+  Serial.println("________________________________");
+  Serial.print("Teplota_Doma: ");
+  Serial.println(Teplota_Doma);
+  Serial.print("Pozadovana_Teplota_Doma: ");
+  Serial.println(Pozadovana_Teplota_Doma);
+  Serial.print("rozdil_400W_800W: ");
+  Serial.println(rozdil_400W_800W);
+
+  // Normální regulace teploty (běžný provoz)
+  if (Teplota_Doma >= Pozadovana_Teplota_Doma) {
+    // Vypneme zařízení a nastavíme příznak vypnuto
+    if (digitalRead(Pin_Privod_elektriny) == HIGH) {
+      irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+      odesilany_vykon_IR = 0;
+      Serial.println("Odesláno z funkce regulaceTeploty - vypnutí zařízení");
+      delay(2000);
+      irsend.sendRaw(rawData_Sinclair_0W, 35, 38);
+      delay(20000);
+      irsend.sendRaw(rawData_Sinclair_0W, 35, 38);   
+      delay(90000);
+      digitalWrite(Pin_Privod_elektriny, LOW);
+      Serial.println("Odesláno z funkce regulaceTeploty Pin_Privod_elektriny, LOW");
+    }
+  } else if (Teplota_Doma <= (Pozadovana_Teplota_Doma - rozdil_Vypnuto_Zapnuto)) { 
+    // Teplota klesla o více než "rozdil_Vypnuto_Zapnuto" pod požadovanou hodnotu 
+    if (digitalRead(Pin_Privod_elektriny) == LOW) {
+      Serial.println("Funkce regulaceTeploty: Teplota_Doma <= (Pozadovana_Teplota_Doma - rozdil_Vypnuto_Zapnuto), voláme inicializaceZapnuti");
+      inicializaceZapnuti();
+    }    
+    if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
+      irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
+      odesilany_vykon_IR = 400;
+      Serial.println("Přepínám na 400W");
+    } else {
+      irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
+      odesilany_vykon_IR = 800;
+      Serial.println("Přepínám na 800W");
+    }
+  } else if (digitalRead(Pin_Privod_elektriny) == HIGH) {
+    // Pokud je zařízení zapnuté, upravujeme výkon podle rozdílu teplot
+    if ((Pozadovana_Teplota_Doma - Teplota_Doma) <= rozdil_400W_800W) {
+      irsend.sendRaw(rawData_Sinclair_400W, 35, 38);
+      odesilany_vykon_IR = 400;
+      Serial.println("Přepínám na 400W");
+    } else {
+      irsend.sendRaw(rawData_Sinclair_800W, 35, 38);
+      odesilany_vykon_IR = 800;
+      Serial.println("Přepínám na 800W");
+    }
+  }
+}
+
 
 
 
@@ -365,7 +422,7 @@ void kontrolaBezpecnosti() {
     irsend.sendRaw(rawData_Sinclair_Vypnuto, 279, 38);
     Serial.println("Odesláno z funkce kontrolaBezpecnosti rawData_Sinclair_Vypnuto a čekám 110s");
     delay(110000);
-    
+
     digitalWrite(Pin_Privod_elektriny, LOW);
     Serial.println("Odesláno z funkce kontrolaBezpecnosti Pin_Privod_elektriny, LOW");
   }
@@ -377,13 +434,13 @@ void kontrolaBezpecnosti() {
 
 void inicializaceZapnuti() {
 
-    static int pokus = 0; // Přidáno pro sledování počtu pokusů
-
     Serial.println("");
     Serial.println("Start funkce inicializaceZapnuti___________ ");
     Serial.println("");
+
+    static int pokus = 0; // Přidáno pro sledování počtu pokusů
     digitalWrite(Pin_Privod_elektriny, HIGH);
-    delay(5000);
+    delay(8000);
     Serial.println("________________________________");
     Serial.println("Odesláno z funkce inicializaceZapnuti Pin_Privod_elektriny, HIGH");
     for (int i = 0; i < 40; i++) {
@@ -456,7 +513,6 @@ void setup(void) {
 
   cteniDatSenzoru();
   kontrolaBezpecnosti(); 
-  digitalWrite(Pin_Privod_elektriny, LOW);
 
   tft.init();
   tft.setRotation(1);  // Orientace na šířku
